@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"istio.io/pkg/log"
 
 	"istio.io/tools/isotope/convert/pkg/consts"
@@ -35,7 +36,8 @@ func sendRequest(
 		return nil, err
 	}
 	log.Debugf("sending request to %s (%s)", destName, url)
-	return http.DefaultClient.Do(request)
+	return otelhttp.DefaultClient.Do(request)
+	// return http.DefaultClient.Do(request)
 }
 
 func buildRequest(

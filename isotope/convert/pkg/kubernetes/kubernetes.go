@@ -60,6 +60,8 @@ func ServiceGraphToKubernetesManifests(
 	serviceMaxIdleConnectionsPerHost int,
 	clientNodeSelector map[string]string,
 	clientImage string,
+	jaegerAddr string,
+	jaegerPort int,
 	environmentName string) ([]byte, error) {
 	numServices := len(serviceGraph.Services)
 	numManifests := numManifestsPerService*numServices + numConfigMaps
@@ -92,7 +94,7 @@ func ServiceGraphToKubernetesManifests(
 	for _, service := range serviceGraph.Services {
 		k8sDeployment := makeDeployment(
 			service, serviceNodeSelector, serviceImage,
-			serviceMaxIdleConnectionsPerHost)
+			serviceMaxIdleConnectionsPerHost, jaegerAddr, jaegerPort)
 		innerErr := appendManifest(k8sDeployment)
 		if innerErr != nil {
 			return nil, innerErr
@@ -188,7 +190,7 @@ func makeService(service svc.Service) (k8sService apiv1.Service) {
 
 func makeDeployment(
 	service svc.Service, nodeSelector map[string]string,
-	serviceImage string, serviceMaxIdleConnectionsPerHost int) (
+	serviceImage string, serviceMaxIdleConnectionsPerHost int, jaegerAddr string, jaegerPort int) (
 	k8sDeployment appsv1.Deployment) {
 	k8sDeployment.APIVersion = "apps/v1"
 	k8sDeployment.Kind = "Deployment"
@@ -216,12 +218,19 @@ func makeDeployment(
 				NodeSelector: nodeSelector,
 				Containers: []apiv1.Container{
 					{
-						Name:  consts.ServiceContainerName,
-						Image: serviceImage,
+						Name:            consts.ServiceContainerName,
+						Image:           serviceImage,
+						ImagePullPolicy: "IfNotPresent",
 						Args: []string{
 							fmt.Sprintf(
 								"--max-idle-connections-per-host=%v",
 								serviceMaxIdleConnectionsPerHost),
+							fmt.Sprintf(
+								"--jaeger-address=%v",
+								jaegerAddr),
+							fmt.Sprintf(
+								"--jaeger-port=%v",
+								jaegerPort),
 						},
 						Env: []apiv1.EnvVar{
 							{Name: consts.ServiceNameEnvKey, Value: service.Name},

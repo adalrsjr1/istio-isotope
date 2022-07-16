@@ -7,6 +7,11 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/spf13/cobra v0.0.7
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.33.0
+	go.opentelemetry.io/otel v1.8.0
+	go.opentelemetry.io/otel/exporters/jaeger v1.8.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.8.0
+	go.opentelemetry.io/otel/sdk v1.8.0
 	istio.io/pkg v0.0.0-20200327214633-ce134a9bd104
 	k8s.io/api v0.18.0
 	k8s.io/apimachinery v0.18.0

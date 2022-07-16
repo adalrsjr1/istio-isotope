@@ -51,6 +51,12 @@ var kubernetesCmd = &cobra.Command{
 		serviceMaxIdleConnectionsPerHost, err := cmd.PersistentFlags().GetInt("service-max-idle-connections-per-host")
 		exitIfError(err)
 
+		jaegerAddr, err := cmd.PersistentFlags().GetString("jaeger-address")
+		exitIfError(err)
+
+		jaegerPort, err := cmd.PersistentFlags().GetInt("jaeger-port")
+		exitIfError(err)
+
 		clientImage, err := cmd.PersistentFlags().GetString("client-image")
 		exitIfError(err)
 
@@ -65,7 +71,7 @@ var kubernetesCmd = &cobra.Command{
 
 		manifests, err := kubernetes.ServiceGraphToKubernetesManifests(
 			serviceGraph, serviceNodeSelector, serviceImage,
-			serviceMaxIdleConnectionsPerHost, clientNodeSelector, clientImage, environmentName)
+			serviceMaxIdleConnectionsPerHost, clientNodeSelector, clientImage, jaegerAddr, jaegerPort, environmentName)
 		exitIfError(err)
 
 		fmt.Println(string(manifests))
@@ -87,6 +93,10 @@ func init() {
 		"client-node-selector", "", "the node selector for client workloads")
 	kubernetesCmd.PersistentFlags().String(
 		"service-node-selector", "", "the node selector for service workloads")
+	kubernetesCmd.PersistentFlags().String(
+		"jaeger-address", "jaeger-collector.kube-monitoring.svc.cluster.local", "jaeger address")
+	kubernetesCmd.PersistentFlags().Int(
+		"jaeger-port", 14268, "jaeger port")
 }
 
 func splitByEquals(s string) (k string, v string, err error) {
