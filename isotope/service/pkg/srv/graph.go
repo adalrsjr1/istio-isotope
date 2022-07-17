@@ -38,7 +38,7 @@ import (
 // serviceName in the service graph represented by the YAML file at path.
 func HandlerFromServiceGraphYAML(path string, serviceName string) (Handler, error,
 ) {
-	tracer := otel.GetTracerProvider().Tracer("serviceName")
+	tracer := otel.GetTracerProvider().Tracer(serviceName)
 	ctx, span := tracer.Start(context.Background(), "internal")
 	defer span.End()
 

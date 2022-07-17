@@ -82,7 +82,7 @@ var stringToLevel = map[string]log.Level{
 // the Jaeger exporter that will send spans to the provided url. The returned
 // TracerProvider will also use a Resource configured with all the information
 // about the application.
-func tracerProvider(service string, url string) (*tracesdk.TracerProvider, error) {
+func tracerProvider(service string, pod string, url string) (*tracesdk.TracerProvider, error) {
 	// Create the Jaeger exporter
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 	if err != nil {
@@ -98,15 +98,16 @@ func tracerProvider(service string, url string) (*tracesdk.TracerProvider, error
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(service),
-			attribute.String("environment", service),
+			attribute.String("pod", pod),
+			attribute.String("name", service),
 			attribute.Int64("ID", rand.Int63()),
 		)),
 	)
 	return tp, nil
 }
 
-func initTracer(serviceName string) *tracesdk.TracerProvider {
-	tp, err := tracerProvider(serviceName, fmt.Sprintf("http://%s:%d/api/traces", *jaegerAddr, *jaegerPort))
+func initTracer(serviceName string, podName string) *tracesdk.TracerProvider {
+	tp, err := tracerProvider(serviceName, podName, fmt.Sprintf("http://%s:%d/api/traces", *jaegerAddr, *jaegerPort))
 	if err != nil {
 		log.Fatal(`cannot connect to jaeger at %s`)
 	}
@@ -140,7 +141,12 @@ func main() {
 		log.Fatalf(`env var "%s" is not set`, consts.ServiceNameEnvKey)
 	}
 
-	tp := initTracer(serviceName)
+	podName, ok := os.LookupEnv(consts.PodNameEnvKey)
+	if !ok {
+		log.Fatalf(`env var "%s" is not set`, consts.PodNameEnvKey)
+	}
+
+	tp := initTracer(serviceName, podName)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

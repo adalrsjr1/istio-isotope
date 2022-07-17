@@ -234,6 +234,14 @@ func makeDeployment(
 						},
 						Env: []apiv1.EnvVar{
 							{Name: consts.ServiceNameEnvKey, Value: service.Name},
+							{
+								Name: consts.PodNameEnvKey,
+								ValueFrom: &apiv1.EnvVarSource{
+									FieldRef: &apiv1.ObjectFieldSelector{
+										FieldPath: "metadata.name",
+									},
+								},
+							},
 						},
 						VolumeMounts: []apiv1.VolumeMount{
 							{
