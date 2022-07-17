@@ -1,3 +1,17 @@
+# Disclaimer
+
+This fork happend at `8be6c093f3f0c0aca94477a03b4c6cf5f7194ff0`.
+
+This fork:
+
+1. instrument isotope service to add distributed tracing
+1. add a generator of "realistic" topologies according to the following papers:
+  - [1] [Improving Microservice-based Applications with Runtime Adaptation](https://doi.org/10.1186/s13174-019-0104-0)
+  - [2] [The Weakest Link: Revealing and Modeling the Architectural Patterns of Microservice Applications](https://doi.org/10.5555/3432601.3432616)
+  - [3] [Graph-Based Analysis and Prediction for Software Evolution](https://doi.org/10.1109/ICSE.2012.6227173)
+  - [4] [Power Laws in Software](https://doi.org/10.1145/1391984.1391986)
+
+
 # Isotope
 
 Isotope (**is**ti**o** **to**pology **pe**rformance) benchmarks Istio against
