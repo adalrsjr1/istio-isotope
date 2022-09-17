@@ -16,6 +16,7 @@ package srv
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 
@@ -27,27 +28,34 @@ import (
 )
 
 func sendRequest(
+	ctx context.Context,
 	destName string,
 	size size.ByteSize,
 	requestHeader http.Header) (*http.Response, error) {
 	url := fmt.Sprintf("http://%s:%v", destName, consts.ServicePort)
-	request, err := buildRequest(url, size, requestHeader)
+	request, err := buildRequest(ctx, url, size, requestHeader)
 	if err != nil {
 		return nil, err
 	}
 	log.Debugf("sending request to %s (%s)", destName, url)
-	return otelhttp.DefaultClient.Do(request)
 	// return http.DefaultClient.Do(request)
+	// return otelhttp.DefaultClient.Do(request)
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	return client.Do(request)
 }
 
 func buildRequest(
+	ctx context.Context,
 	url string, size size.ByteSize, requestHeader http.Header) (
 	*http.Request, error) {
 	payload, err := makeRandomByteArray(size)
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequest("GET", url, bytes.NewBuffer(payload))
+	request, err := http.NewRequestWithContext(ctx, "GET", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}

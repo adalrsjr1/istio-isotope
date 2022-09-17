@@ -165,43 +165,6 @@ TYPE_GRAPH = GraphModel.MULTITIER
 NUM_SERVICES = 10
 
 
-def parse_arguments():
-    import argparse
-    global REQUEST_SIZE
-    global RESPONSE_SIZE
-    global NUM_REPLICAS
-    global NUM_SERVICES
-    global TYPE_GRAPH
-
-    parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('--req-size', metavar='q', type=int,
-                        default=REQUEST_SIZE,
-                        help='an integer for the accumulator')
-
-    parser.add_argument('--res-size', metavar='s', type=int,
-                        default=RESPONSE_SIZE,
-                        help='an integer for the accumulator')
-
-    parser.add_argument('--replicas', metavar='r', type=int,
-                        default=NUM_REPLICAS,
-                        help='an integer for the accumulator')
-
-    parser.add_argument('--num-services', metavar='n', type=int,
-                        default=NUM_SERVICES,
-                        help='an integer for the accumulator')
-
-    parser.add_argument('--type', metavar='t', type=GraphModel, required=True,
-                        help='graph model: star, star_auxiliary, multitier, auxiliary-services')
-
-    args = parser.parse_args()
-
-    REQUEST_SIZE = args.req_size
-    RESPONSE_SIZE = args.res_size
-    NUM_REPLICAS = args.replicas
-    NUM_SERVICES = args.num_services
-    TYPE_GRAPH = args.type
-
-
 def main() -> None:
 
     g: Graph = sample(NUM_SERVICES, TYPE_GRAPH, directed=True, weighted=False)
@@ -243,5 +206,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    parse_arguments()
     main()

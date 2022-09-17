@@ -11,8 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// modified by Adalberto Sampaio Junior @adalrsjr1
 
 package main
 
@@ -27,12 +25,6 @@ import (
 	"runtime"
 	"time"
 
-	"istio.io/pkg/log"
-
-	"istio.io/tools/isotope/convert/pkg/consts"
-	"istio.io/tools/isotope/service/pkg/srv"
-	"istio.io/tools/isotope/service/pkg/srv/prometheus"
-
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,10 +32,13 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
-)
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"istio.io/pkg/log"
 
-// spans cannot are appended across services
+	"istio.io/tools/isotope/convert/pkg/consts"
+	"istio.io/tools/isotope/service/pkg/srv"
+	"istio.io/tools/isotope/service/pkg/srv/prometheus"
+)
 
 const (
 	promEndpoint    = "/metrics"
@@ -63,10 +58,6 @@ var (
 	logLevel = flag.String(
 		"log-level", "info",
 		"log level")
-
-	jaegerAddr = flag.String("jaeger-address", "localhost", "jaeger-address")
-
-	jaegerPort = flag.Int("jaeger-port", 14268, "jaeger-port")
 )
 
 var stringToLevel = map[string]log.Level{
@@ -82,52 +73,98 @@ var stringToLevel = map[string]log.Level{
 // the Jaeger exporter that will send spans to the provided url. The returned
 // TracerProvider will also use a Resource configured with all the information
 // about the application.
-func tracerProvider(service string, pod string, url string) (*tracesdk.TracerProvider, error) {
+func tracerProvider(url, service, environment, podname, nodename string, id int64) (*tracesdk.TracerProvider, error) {
 	// Create the Jaeger exporter
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 	if err != nil {
-		log.Fatalf("cannot create jaeger exporter at %s", url)
 		return nil, err
 	}
-
 	tp := tracesdk.NewTracerProvider(
-		tracesdk.WithSampler(tracesdk.AlwaysSample()),
 		// Always be sure to batch in production.
 		tracesdk.WithBatcher(exp),
 		// Record information about this application in a Resource.
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(service),
-			attribute.String("pod", pod),
-			attribute.String("name", service),
-			attribute.Int64("ID", rand.Int63()),
+			attribute.String("environment", environment),
+			attribute.Int64("ID", id),
+			attribute.String("pod", podname),
+			attribute.String("node", nodename),
 		)),
 	)
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
 	return tp, nil
 }
 
-func initTracer(serviceName string, podName string) *tracesdk.TracerProvider {
-	tp, err := tracerProvider(serviceName, podName, fmt.Sprintf("http://%s:%d/api/traces", *jaegerAddr, *jaegerPort))
-	if err != nil {
-		log.Fatal(`cannot connect to jaeger at %s`)
-	}
-
-	// Register our TracerProvider as the global so any imported
-	// instrumentation in the future will default to using it.
-	otel.SetTracerProvider(tp)
-
-	// Register the trace context and baggage propagators so data is propagated across services/processes.
-	otel.SetTextMapPropagator(
-		propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{},
-			propagation.Baggage{},
-		),
-	)
-
-	return tp
+func help() {
+	fmt.Println(`List of Env Vars required and default values`)
+	fmt.Println(`JAEGERADDR: jaeger-collector.kube-monitoring`)
+	fmt.Println(`JAEGERPORT: 14268`)
+	fmt.Println(`PODNAME: auto-inject using K8S downward API`)
+	fmt.Println(`NODENAME: auto-inject using K8S downward API`)
+	fmt.Println(`NOTRACE: if this EnvVar exists, even if it is empty, otel tracing will be disable`)
 }
 
 func main() {
+	help()
+	serviceName, ok := os.LookupEnv(consts.ServiceNameEnvKey)
+	if !ok {
+		log.Fatalf(`env var "%s" is not set`, consts.ServiceNameEnvKey)
+	}
+
+	environment := consts.ServiceGraphNamespace
+	id := rand.Int63()
+
+	jaegerAddr, ok := os.LookupEnv("JAEGERADDR")
+	if !ok {
+		jaegerAddr = "jaeger-collector.kube-monitoring"
+		// log.Fatalf(`env var "%s" is not set`, consts.ServiceNameEnvKey)
+	}
+
+	jaegerPort, ok := os.LookupEnv("JAEGERPORT")
+	if !ok {
+		jaegerPort = "14268"
+		// log.Fatalf(`env var "%s" is not set`, consts.ServiceNameEnvKey)
+	}
+
+	podname, ok := os.LookupEnv("PODNAME")
+	if !ok {
+		log.Fatalf(`env var PODNAME is not set`)
+	}
+
+	nodename, ok := os.LookupEnv("NODENAME")
+	if !ok {
+		log.Fatalf(`env var NODENAME is not set`)
+	}
+
+	_, notracing := os.LookupEnv("NOTRACING")
+
+	tp, err := tracerProvider(fmt.Sprintf("http://%s:%s/api/traces", jaegerAddr, jaegerPort), serviceName, environment, podname, nodename, id)
+
+	if err != nil {
+		log.Fatalf("%s", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Cleanly shutdown and flush telemetry when the application exits.
+	shutdowntp := func(ctx context.Context) {
+		// Do not make the application hang when it is shutdown.
+		ctx, cancel = context.WithTimeout(ctx, time.Second*5)
+		defer cancel()
+		if err := tp.Shutdown(ctx); err != nil {
+			log.Fatalf("%s", err)
+		}
+	}
+	if notracing {
+		shutdowntp(ctx)
+	}
+	defer shutdowntp(ctx)
+
 	flag.Parse()
 	for _, s := range log.Scopes() {
 		s.SetOutputLevel(stringToLevel[*logLevel])
@@ -135,62 +172,28 @@ func main() {
 
 	setMaxProcs()
 	setMaxIdleConnectionsPerHost(*maxIdleConnectionsPerHostFlag)
-
-	serviceName, ok := os.LookupEnv(consts.ServiceNameEnvKey)
-	if !ok {
-		log.Fatalf(`env var "%s" is not set`, consts.ServiceNameEnvKey)
-	}
-
-	podName, ok := os.LookupEnv(consts.PodNameEnvKey)
-	if !ok {
-		log.Fatalf(`env var "%s" is not set`, consts.PodNameEnvKey)
-	}
-
-	tp := initTracer(serviceName, podName)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Cleanly shutdown and flush telemetry when the application exits.
-	defer func(ctx context.Context) {
-		// Do not make the application hang when it is shutdown.
-		ctx, cancel = context.WithTimeout(ctx, time.Second*5)
-		defer cancel()
-		if err := tp.Shutdown(ctx); err != nil {
-			log.Fatalf(`error to shutdown span processors: %s`, err.Error())
-		}
-	}(ctx)
-
 	defaultHandler, err := srv.HandlerFromServiceGraphYAML(
 		serviceGraphYAMLFilePath, serviceName)
-
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
-	err = serveWithPrometheus(defaultHandler, serviceName)
+	_, span := tp.Tracer("service").Start(context.Background(), "main")
+	defer span.End()
+
+	tracingHandler := otelhttp.NewHandler(defaultHandler, "defaultHandler", otelhttp.WithTracerProvider(tp))
+	err = serveWithPrometheus(tracingHandler)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 }
 
-func otelHandler(h http.Handler, operation string) http.Handler {
-	httpOptions := []otelhttp.Option{
-		otelhttp.WithTracerProvider(otel.GetTracerProvider()),
-		otelhttp.WithPropagators(otel.GetTextMapPropagator()),
-	}
-
-	return otelhttp.NewHandler(h, operation, httpOptions...)
-}
-
-func serveWithPrometheus(defaultHandler http.Handler, serviceName string) error {
+func serveWithPrometheus(defaultHandler http.Handler) error {
 	log.Infof(`exposing Prometheus endpoint "%s"`, promEndpoint)
-	// http.Handle(promEndpoint, otelHandler(prometheus.Handler(), "/metrics"))
 	http.Handle(promEndpoint, prometheus.Handler())
 
 	log.Infof(`exposing default endpoint "%s"`, defaultEndpoint)
-	http.Handle(defaultEndpoint, otelHandler(defaultHandler, serviceName))
-
+	http.Handle(defaultEndpoint, defaultHandler)
 	addr := fmt.Sprintf(":%d", consts.ServicePort)
 	log.Infof("listening on port %v\n", consts.ServicePort)
 	if err := http.ListenAndServe(addr, nil); err != nil {

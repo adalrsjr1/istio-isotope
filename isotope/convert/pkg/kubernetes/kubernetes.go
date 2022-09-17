@@ -60,8 +60,6 @@ func ServiceGraphToKubernetesManifests(
 	serviceMaxIdleConnectionsPerHost int,
 	clientNodeSelector map[string]string,
 	clientImage string,
-	jaegerAddr string,
-	jaegerPort int,
 	environmentName string) ([]byte, error) {
 	numServices := len(serviceGraph.Services)
 	numManifests := numManifestsPerService*numServices + numConfigMaps
@@ -94,7 +92,7 @@ func ServiceGraphToKubernetesManifests(
 	for _, service := range serviceGraph.Services {
 		k8sDeployment := makeDeployment(
 			service, serviceNodeSelector, serviceImage,
-			serviceMaxIdleConnectionsPerHost, jaegerAddr, jaegerPort)
+			serviceMaxIdleConnectionsPerHost)
 		innerErr := appendManifest(k8sDeployment)
 		if innerErr != nil {
 			return nil, innerErr
@@ -190,7 +188,7 @@ func makeService(service svc.Service) (k8sService apiv1.Service) {
 
 func makeDeployment(
 	service svc.Service, nodeSelector map[string]string,
-	serviceImage string, serviceMaxIdleConnectionsPerHost int, jaegerAddr string, jaegerPort int) (
+	serviceImage string, serviceMaxIdleConnectionsPerHost int) (
 	k8sDeployment appsv1.Deployment) {
 	k8sDeployment.APIVersion = "apps/v1"
 	k8sDeployment.Kind = "Deployment"
@@ -220,28 +218,18 @@ func makeDeployment(
 					{
 						Name:            consts.ServiceContainerName,
 						Image:           serviceImage,
-						ImagePullPolicy: "IfNotPresent",
+						ImagePullPolicy: apiv1.PullIfNotPresent,
 						Args: []string{
 							fmt.Sprintf(
 								"--max-idle-connections-per-host=%v",
 								serviceMaxIdleConnectionsPerHost),
-							fmt.Sprintf(
-								"--jaeger-address=%v",
-								jaegerAddr),
-							fmt.Sprintf(
-								"--jaeger-port=%v",
-								jaegerPort),
 						},
 						Env: []apiv1.EnvVar{
 							{Name: consts.ServiceNameEnvKey, Value: service.Name},
-							{
-								Name: consts.PodNameEnvKey,
-								ValueFrom: &apiv1.EnvVarSource{
-									FieldRef: &apiv1.ObjectFieldSelector{
-										FieldPath: "metadata.name",
-									},
-								},
-							},
+							{Name: "PODNAME", ValueFrom: &apiv1.EnvVarSource{FieldRef: &apiv1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+							{Name: "PODIP", ValueFrom: &apiv1.EnvVarSource{FieldRef: &apiv1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
+							{Name: "NAMESPACE", ValueFrom: &apiv1.EnvVarSource{FieldRef: &apiv1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							{Name: "NODENAME", ValueFrom: &apiv1.EnvVarSource{FieldRef: &apiv1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 						},
 						VolumeMounts: []apiv1.VolumeMount{
 							{

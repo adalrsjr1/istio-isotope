@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"istio.io/pkg/log"
 
 	"istio.io/tools/isotope/convert/pkg/graph/svc"
@@ -33,6 +35,9 @@ type Handler struct {
 }
 
 func (h Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	ctx, span := tracer.Start(request.Context(), "serve-http", trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
+
 	startTime := time.Now()
 
 	prometheus.RecordRequestReceived()
@@ -54,12 +59,18 @@ func (h Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		prometheus.RecordResponseSent(duration, len(h.responsePayload), status)
 	}
 
+	if len(h.Service.Script) <= 0 {
+		span.AddEvent("terminal")
+	}
+
 	for _, step := range h.Service.Script {
 		forwardableHeader := extractForwardableHeader(request.Header)
-		err := execute(step, forwardableHeader, h.ServiceTypes)
+		err := execute(ctx, step, forwardableHeader, h.ServiceTypes)
 		if err != nil {
 			log.Errorf("%s", err)
 			respond(http.StatusInternalServerError, err.Error()+"\n")
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return
 		}
 	}

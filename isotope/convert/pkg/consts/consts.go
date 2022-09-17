@@ -43,8 +43,4 @@ const (
 
 	// FortioMetricsPort is the port on which /metrics is available.
 	FortioMetricsPort = 42422
-
-	// PodNameEnvKey is the key of the environment variable whose value is the
-	// name of the pod when deployed.
-	PodNameEnvKey = "POD_NAME"
 )

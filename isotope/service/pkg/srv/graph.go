@@ -11,19 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// modified by Adalberto Sampaio Junior @adalrsjr1
 
 package srv
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
 	"sigs.k8s.io/yaml"
 
 	"istio.io/pkg/log"
@@ -36,53 +31,24 @@ import (
 
 // HandlerFromServiceGraphYAML makes a handler to emulate the service with name
 // serviceName in the service graph represented by the YAML file at path.
-func HandlerFromServiceGraphYAML(path string, serviceName string) (Handler, error,
+func HandlerFromServiceGraphYAML(
+	path string, serviceName string) (Handler, error,
 ) {
-	tracer := otel.GetTracerProvider().Tracer(serviceName)
-	ctx, span := tracer.Start(context.Background(), "internal")
-	defer span.End()
-
-	serviceGraph, err := func(ctx context.Context) (serviceGraph graph.ServiceGraph, err error) {
-		_, span := tracer.Start(ctx, "serviceGraphFromYAMLFile")
-		defer span.End()
-		return serviceGraphFromYAMLFile(path)
-	}(ctx)
+	serviceGraph, err := serviceGraphFromYAMLFile(path)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		span.End()
 		return Handler{}, err
 	}
 
-	service, err := func(ctx context.Context) (
-		service svc.Service, err error) {
-		_, span := tracer.Start(ctx, "extractService")
-		defer span.End()
-		return extractService(serviceGraph, serviceName)
-	}(ctx)
+	service, err := extractService(serviceGraph, serviceName)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		span.End()
 		return Handler{}, err
 	}
 	_ = logService(service)
 
-	serviceTypes := func(ctx context.Context) map[string]svctype.ServiceType {
-		_, span := tracer.Start(ctx, "extractServiceTypes")
-		defer span.End()
-		return extractServiceTypes(serviceGraph)
-	}(ctx)
+	serviceTypes := extractServiceTypes(serviceGraph)
 
-	responsePayload, err := func(ctx context.Context) ([]byte, error) {
-		_, span := tracer.Start(ctx, "makeRandomByteArray")
-		defer span.End()
-		return makeRandomByteArray(service.ResponseSize)
-	}(ctx)
+	responsePayload, err := makeRandomByteArray(service.ResponseSize)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		span.End()
 		return Handler{}, err
 	}
 
